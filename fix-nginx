@@ -1,0 +1,43 @@
+#!/bin/bash
+# =========================================
+# Auto Fix NGINX OFF & Restart XRAY
+# =========================================
+
+clear
+echo -e "===================================="
+echo -e "   AUTO FIX NGINX & XRAY SERVICE    "
+echo -e "===================================="
+sleep 1
+
+# 1. Edit konfigurasi xray.conf
+echo -e "\n[1/5] Memperbaiki konfigurasi NGINX..."
+sed -i '/\[::\]/s/^/#/' /etc/nginx/conf.d/xray.conf
+
+# 2. Tes konfigurasi NGINX
+echo -e "\n[2/5] Mengecek konfigurasi NGINX..."
+nginx -t
+if [ $? -ne 0 ]; then
+    echo -e "\n❌ Gagal: konfigurasi NGINX masih error!"
+    exit 1
+else
+    echo -e "\n✅ Konfigurasi NGINX valid."
+fi
+
+# 3. Restart NGINX
+echo -e "\n[3/5] Me-restart NGINX..."
+systemctl restart nginx
+
+# 4. Cek status NGINX
+echo -e "\n[4/5] Status NGINX:"
+systemctl status nginx --no-pager | head -n 10
+
+# 5. Restart XRAY
+echo -e "\n[5/5] Me-restart XRAY..."
+systemctl restart xray
+
+# 6. Jalankan menu
+echo -e "\nMenjalankan menu..."
+sleep 1
+menu
+
+echo -e "\n✅ Selesai! Semua service telah diperiksa dan dijalankan."

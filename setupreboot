@@ -1,0 +1,138 @@
+#!/bin/bash
+clear
+# =================== WARNA ===================
+BIWhite='\033[1;97m'
+BIYellow='\033[1;93m'
+BIGreen='\033[1;92m'
+BIRed='\033[1;91m'
+NC='\033[0m'
+green='\033[0;32m'
+
+# =================== FILE & KONFIG ===================
+LOG_FILE="/root/log-install.txt"
+RE_OTM_FILE="/home/re_otm"
+CRON_FILE="/etc/cron.d/re_otm"
+
+mkdir -p "$(dirname "$LOG_FILE")"
+touch "$LOG_FILE"
+
+# =================== SERVICE WAJIB ===================
+systemctl enable cron >/dev/null 2>&1
+systemctl restart cron >/dev/null 2>&1
+systemctl enable rc-local >/dev/null 2>&1
+systemctl restart rc-local >/dev/null 2>&1
+systemctl enable netfilter-persistent >/dev/null 2>&1
+systemctl restart netfilter-persistent >/dev/null 2>&1
+
+# =================== AUTO SETUP (JIKA BELUM ADA) ===================
+if [ ! -f "$CRON_FILE" ]; then
+    echo "5" > "$RE_OTM_FILE"
+    cat > "$CRON_FILE" <<-END
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+0 5 * * * root /sbin/reboot
+END
+    chmod 644 "$CRON_FILE"
+    systemctl restart cron >/dev/null 2>&1
+fi
+
+# =================== CEK STATUS SERVICE ===================
+cek_status() {
+    if systemctl is-active --quiet "$1"; then
+        echo -e "» $(printf '%-22s' "$2"):  ${BIGreen}Running (No Error)${NC}"
+    else
+        echo -e "» $(printf '%-22s' "$2"):  ${BIRed}Not Running${NC}"
+    fi
+}
+
+# =================== CEK STATUS AUTOREBOOT ===================
+if [ -f "$CRON_FILE" ] && grep -q "/sbin/reboot" "$CRON_FILE"; then
+    STATUS="${BIGreen}ON${NC}"
+    CURRENT_HOUR=$(grep "/sbin/reboot" "$CRON_FILE" | awk '{print $2}')
+else
+    STATUS="${BIRed}OFF${NC}"
+    CURRENT_HOUR="None"
+fi
+
+# =================== KONVERSI JAM KE FORMAT AM/PM ===================
+convert_to_ampm() {
+    local hour=$1
+    if [[ "$hour" == "None" ]]; then
+        echo "None"
+        return
+    fi
+    if [ "$hour" -eq 0 ]; then
+        echo "12:00 AM"
+    elif [ "$hour" -lt 12 ]; then
+        echo "${hour}:00 AM"
+    elif [ "$hour" -eq 12 ]; then
+        echo "12:00 PM"
+    else
+        echo "$((hour - 12)):00 PM"
+    fi
+}
+CURRENT_FORMATTED=$(convert_to_ampm "$CURRENT_HOUR")
+
+# =================== TAMPILAN STATUS ===================
+clear
+echo -e "${BIWhite}──────────────────────────────────────${NC}"
+echo -e "${BIYellow}SYSTEM SERVICE STATUS${NC}"
+echo -e "${BIWhite}──────────────────────────────────────${NC}"
+cek_status netfilter-persistent "Iptables"
+cek_status rc-local "RClocal"
+cek_status cron "Autoreboot"
+echo -e "${BIWhite}──────────────────────────────────────${NC}"
+echo -e "Status   : $STATUS"
+echo -e "Current  : ${BIYellow}${CURRENT_FORMATTED}${NC}"
+echo -e "${BIWhite}──────────────────────────────────────${NC}"
+echo -e "[1] Ganti Waktu Auto Reboot"
+echo -e "[2] Matikan Auto Reboot"
+echo -e "[3] Lihat Jadwal Aktif"
+echo -e "[0] Kembali ke Menu"
+echo -e "${BIWhite}──────────────────────────────────────${NC}"
+read -p "Pilih menu: " opt
+
+# =================== MENU OPSI ===================
+case $opt in
+1)
+    echo ""
+    read -p "Input waktu reboot otomatis (0-23): " jam
+    if [[ "$jam" =~ ^[0-9]+$ ]] && [ "$jam" -ge 0 ] && [ "$jam" -le 23 ]; then
+        echo "$jam" > "$RE_OTM_FILE"
+        cat > "$CRON_FILE" <<-END
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+0 $jam * * * root /sbin/reboot
+END
+        chmod 644 "$CRON_FILE"
+        systemctl restart cron >/dev/null 2>&1
+        AMPM=$(convert_to_ampm "$jam")
+        echo -e "${green}✅ Auto reboot aktif setiap jam ${AMPM}${NC}"
+    else
+        echo -e "${BIRed}❌ Input tidak valid!${NC}"
+    fi
+    ;;
+2)
+    rm -f "$CRON_FILE"
+    systemctl restart cron >/dev/null 2>&1
+    echo -e "${BIGreen}✅ Auto reboot berhasil dimatikan.${NC}"
+    ;;
+3)
+    echo -e "${BIWhite}Jadwal aktif saat ini:${NC}"
+    if [ -f "$CRON_FILE" ]; then
+        grep reboot "$CRON_FILE"
+    else
+        echo -e "${BIRed}Tidak ada jadwal reboot aktif.${NC}"
+    fi
+    ;;
+0)
+    menu
+    ;;
+*)
+    echo "Pilihan salah."
+    ;;
+esac
+
+echo ""
+read -n 1 -s -r -p "Tekan [Enter] untuk kembali ke menu"
+menu
